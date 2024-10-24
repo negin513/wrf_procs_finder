@@ -54,16 +54,16 @@ def parse_arguments():
         help="Number of cores per node (e.g., Derecho: 128 cores/node) [default = 128]",
     )
     parser.add_argument(
-        '--e_we',
+        "--e_we",
         type=int,
-        nargs='+',  # Accept one or more integers
-        help='e_we values if not using namelist'
+        nargs="+",  # Accept one or more integers
+        help="e_we values if not using namelist",
     )
     parser.add_argument(
-        '--e_sn',
+        "--e_sn",
         type=int,
-        nargs='+',  # Accept one or more integers
-        help='e_sn values if not using namelist'
+        nargs="+",  # Accept one or more integers
+        help="e_sn values if not using namelist",
     )
     parser.add_argument(
         "--namelist", type=str, help="Path to namelist file containing e_we and e_sn"
