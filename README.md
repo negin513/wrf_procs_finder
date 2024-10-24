@@ -1,10 +1,10 @@
 # wrf_num_procs.py
 
-**A script to find the minimum and maximum number of processors for running WRF and plot schematic of domain decomposition.**
+**A script to find the minimum and maximum number of processes for running WRF and plot schematic of domain decomposition.**
 
 ## Overview
 
-`wrf_num_procs.py` determines the minimum and maximum number of processors and nodes based on the domain's grid points in the i/j directions. 
+`wrf_num_procs.py` determines the minimum and maximum number of processes and nodes based on the domain's grid points in the i/j directions. 
 It ensures that each processor handles at least a minimum number of grid points (i.e. 10 grids/tasks), optimizing computational resources for WRF simulations. 
 
 This script is adapted from a discussion on the [UCAR MMM Forum](https://forum.mmm.ucar.edu/threads/choosing-an-appropriate-number-of-processors.5082/).
@@ -35,7 +35,7 @@ Summary:
 
 
 #### Using Namelist
-The script can read the domain size from a namelist file and find the minimum and maximum number of processors for each domain.
+The script can read the domain size from a namelist file and find the minimum and maximum number of processes for each domain.
 
 ```
     ./wrf_num_procs.py --namelist namelist.input
