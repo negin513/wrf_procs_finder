@@ -16,8 +16,8 @@ Arguments:
 
 
 Example:
-    ./find_wrf_procs.py --cores 128 --e_we 1368 --e_sn 1016
-    ./find_wrf_procs.py --cores 128 --namelist namelist.input
+    ./wrf_num_procs.py --e_we 1368 --e_sn 1016
+    ./wrf_num_procs.py --cores 128 --namelist namelist.input
 """
 
 import argparse
