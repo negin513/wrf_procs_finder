@@ -437,7 +437,6 @@ def find_max_processors(
         # If decomposition is too small, try reducing the number of processors
         if e_we_decomp < min_grid_points or e_sn_decomp < min_grid_points:
             # test to see if the max number of processors allowed is within the number for a single node
-            print("......")
             logging.debug(
                 "Decomposition is too small! Trying to reduce the number of processors: "
             )
@@ -601,7 +600,6 @@ def main():
 
         cores_per_node = args.cores
         show_schematic = args.decomp_schematic
-        print(show_schematic)
 
         # Determine max processors and nodes based on decomposition logic within bounds
         max_procs, max_nodes = find_max_processors_with_print(
