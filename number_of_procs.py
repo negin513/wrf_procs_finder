@@ -21,11 +21,11 @@ Example:
 """
 
 import argparse
-from ast import arg
 import sys
 import os
 import math
 import logging
+import re
 
 
 # Configuration Parameters
@@ -90,43 +90,69 @@ def find_factors(n):
 
 def parse_namelist(namelist_path):
     """
-    Parse the namelist file to extract e_we and e_sn values.
+    Parse the namelist file to extract e_we and e_sn values for multiple domains.
 
     The namelist file should contain lines in the format:
-        e_we = 1368
-        e_sn = 1016
+        e_we = 150,    220,
+        e_sn = 130,    214,
+        max_dom = 2,
 
     Args:
         namelist_path (str): Path to the namelist file.
 
     Returns:
-        tuple: e_we and e_sn values.
+        list of tuples: List containing (e_we, e_sn) for each domain up to max_dom.
 
     Raises:
-        ValueError: If e_we or e_sn are not found or invalid.
+        ValueError: If e_we, e_sn, or max_dom are not found or invalid.
     """
     if not os.path.isfile(namelist_path):
         raise ValueError(f"Namelist file '{namelist_path}' does not exist.")
 
-    e_we = e_sn = None
     with open(namelist_path, "r") as file:
-        for line in file:
-            line = line.strip()
-            if line.startswith("e_we"):
-                try:
-                    e_we = int(line.split("=")[1].strip().rstrip(","))
-                except (IndexError, ValueError):
-                    raise ValueError("Invalid format for 'e_we' in namelist file.")
-            elif line.startswith("e_sn"):
-                try:
-                    e_sn = int(line.split("=")[1].strip().rstrip(","))
-                except (IndexError, ValueError):
-                    raise ValueError("Invalid format for 'e_sn' in namelist file.")
+        content = file.read()
 
-    if e_we is None or e_sn is None:
-        raise ValueError("Namelist file must contain both 'e_we' and 'e_sn' values.")
+    # Remove comments (anything after '!')
+    content = re.sub(r"!.*", "", content)
 
-    return e_we, e_sn
+    # Define patterns for variables
+    patterns = {
+        "e_we": r"e_we\s*=\s*([\d,\s]+)",
+        "e_sn": r"e_sn\s*=\s*([\d,\s]+)",
+        "max_dom": r"max_dom\s*=\s*(\d+)",
+    }
+
+    # Extract variables using regex
+    variables = {}
+    for var, pattern in patterns.items():
+        match = re.search(pattern, content, re.IGNORECASE)
+        if not match:
+            raise ValueError(f"'{var}' not found in the namelist file.")
+        value = match.group(1)
+        if var in ["e_we", "e_sn"]:
+            # Convert comma-separated string to list of integers
+            variables[var] = [
+                int(num) for num in value.split(",") if num.strip().isdigit()
+            ]
+        else:
+            variables[var] = int(value)
+
+    e_we = variables["e_we"]
+    e_sn = variables["e_sn"]
+    max_dom = variables["max_dom"]
+
+    # Validate that max_dom does not exceed available e_we and e_sn values
+    if max_dom > len(e_we) or max_dom > len(e_sn):
+        raise ValueError(
+            f"max_dom={max_dom} exceeds the number of 'e_we' ({len(e_we)}) or 'e_sn' ({len(e_sn)}) values provided."
+        )
+
+    # Create list of (e_we, e_sn) pairs up to max_dom
+    domain_pairs = list(zip(e_we, e_sn))[:max_dom]
+
+    print(domain_pairs)
+
+    return domain_pairs
 
 
 def calculate_processor_bounds(
@@ -185,16 +211,16 @@ def calculate_processor_bounds(
     )
 
     # Print statements as per the specified format
-    #print(
+    # print(
     #    f"Maximum number of processors: {processors_max} --> Requiring {nodes_max} nodes using {cores_per_node} procs/node"
-    #)
-    #print(
+    # )
+    # print(
     #    f"Minimum number of processors: {processors_min} --> Requiring {nodes_min} nodes using {cores_per_node} procs/node"
-    #)
-    #print(f"Good starting point (per WRF docs):")
-    #print(
+    # )
+    # print(f"Good starting point (per WRF docs):")
+    # print(
     #    f"Number of processors: {suggested_processors} --> Requiring {suggested_nodes} nodes using {cores_per_node} procs/node"
-    #)
+    # )
 
     return processors_min, processors_max
 
@@ -226,19 +252,31 @@ def calculate_decomposition(e_we, e_sn, ntasks_x, ntasks_y):
 
 
 def print_domain_decomposition(
-    max_procs, e_we_decomp, e_sn_decomp, e_we_remainder, e_sn_remainder, ntasks_x, ntasks_y
+    max_procs,
+    e_we_decomp,
+    e_sn_decomp,
+    e_we_remainder,
+    e_sn_remainder,
+    ntasks_x,
+    ntasks_y,
+    show_schematic=False,
 ):
     """
     Print a text representation of the domain decomposition.
 
     Args:
+        max_procs (int): Total number of processors.
         e_we_decomp (int): Grid points per tile in the i-direction (x).
         e_sn_decomp (int): Grid points per tile in the j-direction (y).
         e_we_remainder (int): Remaining grid points in the i-direction.
         e_sn_remainder (int): Remaining grid points in the j-direction.
         ntasks_x (int): Number of tasks (tiles) in the i-direction.
         ntasks_y (int): Number of tasks (tiles) in the j-direction.
+        show_schematic (bool): Whether to print the schematic.
     """
+    if not show_schematic:
+        return
+
     # Build the base tile representation
     base_tile = f"{e_we_decomp}x{e_sn_decomp}"
     remainder_tile_x = f"{e_we_remainder}x{e_sn_decomp}" if e_we_remainder > 0 else ""
@@ -249,8 +287,8 @@ def print_domain_decomposition(
         else ""
     )
 
-    print(f"Domain Decomposition Layout with {max_procs} Processes:")
     print("-" * 40)
+    print(f"Domain Decomposition Layout with {max_procs} Processes:")
 
     # Print out the tiles row by row
     for y in range(ntasks_y):
@@ -287,9 +325,12 @@ def print_domain_decomposition(
         )
     print("-" * 40)
 
+
+
+
 def find_max_processors_with_print(*args, **kwargs):
     max_procs, max_nodes = find_max_processors(*args, **kwargs)
-    cores_per_node = kwargs.get('cores', 128)
+    cores_per_node = kwargs.get("cores", 128)
 
     if max_procs > 0:
         # Recompute decomposition for printing
@@ -311,6 +352,7 @@ def find_max_processors_with_print(*args, **kwargs):
         )
     return max_procs, max_nodes
 
+
 def translate_procs_to_node(strategy, total_processors, cores_per_node=128):
     """
     Translate the total number of processors to the number of nodes required based on a strategy.
@@ -320,7 +362,7 @@ def translate_procs_to_node(strategy, total_processors, cores_per_node=128):
         total_processors (int): Total number of processors required.
         num_nodes (int): The number of nodes to use.
         cores_per_node (int): Number of cores available per node (default is 128).
-    
+
     Prints:
         str: A message describing the allocation.
     """
@@ -332,6 +374,7 @@ def translate_procs_to_node(strategy, total_processors, cores_per_node=128):
         f"using ({cores_per_node} procs/node)"
     )
     print(message)
+
 
 def find_max_processors(
     e_we,
@@ -378,9 +421,9 @@ def find_max_processors(
         e_we_decomp, e_sn_decomp, e_we_remainder, e_sn_remainder = (
             calculate_decomposition(e_we, e_sn, ntasks_x, ntasks_y)
         )
-        #print_domain_decomposition(
+        # print_domain_decomposition(
         #    e_we_decomp, e_sn_decomp, e_we_remainder, e_sn_remainder, ntasks_x, ntasks_y
-        #)
+        # )
         logging.debug(f"Testing Number of Nodes: {node_count} --> ")
         logging.debug(
             f"  Number of tasks in x: {ntasks_x}, Number of tasks in y: {ntasks_y}"
@@ -408,7 +451,7 @@ def find_max_processors(
         # If decomposition is too small, try reducing the number of processors
         if e_we_decomp < min_grid_points or e_sn_decomp < min_grid_points:
             # test to see if the max number of processors allowed is within the number for a single node
-
+            print("......")
             logging.debug(
                 "Decomposition is too small! Trying to reduce the number of processors: "
             )
@@ -480,7 +523,7 @@ def find_max_processors(
 
             # if the size of the domain allows multiple nodes
             else:
-                max_procs = ntasks_x * ntasks_y
+                max_procs = ntasks_x * ntasks_y - original_cores
                 max_nodes = math.ceil(max_procs / original_cores)
                 logging.debug(
                     f"Multiple node configuration: max_procs={max_procs}, max_nodes={max_nodes}"
@@ -514,9 +557,10 @@ def main():
 
     try:
         if args.namelist:
-            e_we, e_sn = parse_namelist(args.namelist)
+            domain_pairs = parse_namelist(args.namelist)
         elif args.e_we and args.e_sn:
-            e_we, e_sn = args.e_we, args.e_sn
+            domain_pairs = list(zip(args.e_we, args.e_sn))
+
         else:
             # If only one of e_we or e_sn is provided without namelist
             print(
@@ -528,25 +572,27 @@ def main():
         print(f"Error: {ve}", file=sys.stderr)
         sys.exit(1)
 
-    
+    for idx, (e_we, e_sn) in enumerate(domain_pairs):
+        print("=" * 40)
+        print(f"Domain {idx + 1}: e_we={e_we}, e_sn={e_sn}")
 
-    # Calculate maximum and minimum processors based on domain size
-    processors_min, processors_max = calculate_processor_bounds(e_we, e_sn, args.cores)
-    translate_procs_to_node("Minimum", processors_min, args.cores)
+        # Calculate maximum and minimum processors based on domain size
+        processors_min, processors_max = calculate_processor_bounds(
+            e_we, e_sn, args.cores
+        )
+        translate_procs_to_node("Minimum", processors_min, args.cores)
 
-    cores_per_node = args.cores
-    # Determine max processors and nodes based on decomposition logic within bounds
-    max_procs, max_nodes = find_max_processors_with_print(
-        e_we,
-        e_sn,
-        cores_per_node,
-        NODE_MAX,
-        MIN_GRID_POINTS,
-        processors_min,
-        processors_max,
-    )
-
-
+        cores_per_node = args.cores
+        # Determine max processors and nodes based on decomposition logic within bounds
+        max_procs, max_nodes = find_max_processors_with_print(
+            e_we,
+            e_sn,
+            cores_per_node,
+            NODE_MAX,
+            MIN_GRID_POINTS,
+            processors_min,
+            processors_max,
+        )
 
 
 if __name__ == "__main__":
