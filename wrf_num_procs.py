@@ -54,10 +54,16 @@ def parse_arguments():
         help="Number of cores per node (e.g., Derecho: 128 cores/node) [default = 128]",
     )
     parser.add_argument(
-        "--e_we", type=int, help="Number of grid points in the i-direction"
+        '--e_we',
+        type=int,
+        nargs='+',  # Accept one or more integers
+        help='e_we values if not using namelist'
     )
     parser.add_argument(
-        "--e_sn", type=int, help="Number of grid points in the j-direction"
+        '--e_sn',
+        type=int,
+        nargs='+',  # Accept one or more integers
+        help='e_sn values if not using namelist'
     )
     parser.add_argument(
         "--namelist", type=str, help="Path to namelist file containing e_we and e_sn"
@@ -66,7 +72,7 @@ def parse_arguments():
         "--decomp",
         "--decomp_schematic",
         action="store_true",
-        dest="decomp_schematic", 
+        dest="decomp_schematic",
         help="Print domain decomposition schematic!",
     )
     parser.add_argument(
@@ -565,9 +571,11 @@ def main():
     try:
         if args.namelist:
             domain_pairs = parse_namelist(args.namelist)
-        elif args.e_we and args.e_sn:
-            domain_pairs = list(zip(args.e_we, args.e_sn))
 
+        elif args.e_we and args.e_sn:
+            if len(args.e_we) != len(args.e_sn):
+                raise ValueError("The number of e_we and e_sn values must be the same.")
+            domain_pairs = list(zip(args.e_we, args.e_sn))
         else:
             # If only one of e_we or e_sn is provided without namelist
             print(
