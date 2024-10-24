@@ -63,6 +63,13 @@ def parse_arguments():
         "--namelist", type=str, help="Path to namelist file containing e_we and e_sn"
     )
     parser.add_argument(
+        "--decomp",
+        "--decomp_schematic",
+        action="store_true",
+        dest="decomp_schematic", 
+        help="Print domain decomposition schematic!",
+    )
+    parser.add_argument(
         "--debug",
         action="store_true",
         help="Enable debug mode for detailed output",
@@ -251,108 +258,6 @@ def calculate_decomposition(e_we, e_sn, ntasks_x, ntasks_y):
     return e_we_decomp, e_sn_decomp, e_we_remainder, e_sn_remainder
 
 
-def print_domain_decomposition(
-    max_procs,
-    e_we_decomp,
-    e_sn_decomp,
-    e_we_remainder,
-    e_sn_remainder,
-    ntasks_x,
-    ntasks_y,
-    show_schematic=False,
-):
-    """
-    Print a text representation of the domain decomposition.
-
-    Args:
-        max_procs (int): Total number of processors.
-        e_we_decomp (int): Grid points per tile in the i-direction (x).
-        e_sn_decomp (int): Grid points per tile in the j-direction (y).
-        e_we_remainder (int): Remaining grid points in the i-direction.
-        e_sn_remainder (int): Remaining grid points in the j-direction.
-        ntasks_x (int): Number of tasks (tiles) in the i-direction.
-        ntasks_y (int): Number of tasks (tiles) in the j-direction.
-        show_schematic (bool): Whether to print the schematic.
-    """
-    if not show_schematic:
-        return
-
-    # Build the base tile representation
-    base_tile = f"{e_we_decomp}x{e_sn_decomp}"
-    remainder_tile_x = f"{e_we_remainder}x{e_sn_decomp}" if e_we_remainder > 0 else ""
-    remainder_tile_y = f"{e_we_decomp}x{e_sn_remainder}" if e_sn_remainder > 0 else ""
-    remainder_tile_corner = (
-        f"{e_we_remainder}x{e_sn_remainder}"
-        if e_we_remainder > 0 and e_sn_remainder > 0
-        else ""
-    )
-
-    print("-" * 40)
-    print(f"Domain Decomposition Layout with {max_procs} Processes:")
-
-    # Print out the tiles row by row
-    for y in range(ntasks_y):
-        row = " | ".join([base_tile] * ntasks_x)
-        if remainder_tile_x:
-            row += " | " + remainder_tile_x
-        print(row)
-
-    # Print the remainder row if needed
-    if remainder_tile_y:
-        row = " | ".join([remainder_tile_y] * ntasks_x)
-        if remainder_tile_corner:
-            row += " | " + remainder_tile_corner
-        print(row)
-
-    print("-" * 40)
-
-    print("Summary:")
-    print(
-        f"  Base tile size : {base_tile} (each tile has {e_we_decomp} x {e_sn_decomp} grid points)"
-    )
-    print(f"  Total tiles    : {ntasks_x} x {ntasks_y}")
-    if e_we_remainder > 0:
-        print(
-            f"  Extra column with tile size : {e_we_remainder} x {e_sn_decomp} (added to the right)"
-        )
-    if e_sn_remainder > 0:
-        print(
-            f"  Extra row with tile size    : {e_we_decomp} x {e_sn_remainder} (added to the bottom)"
-        )
-    if remainder_tile_corner:
-        print(
-            f"  Extra corner tile size      : {remainder_tile_corner} (added at the bottom-right corner)"
-        )
-    print("-" * 40)
-
-
-
-
-def find_max_processors_with_print(*args, **kwargs):
-    max_procs, max_nodes = find_max_processors(*args, **kwargs)
-    cores_per_node = kwargs.get("cores", 128)
-
-    if max_procs > 0:
-        # Recompute decomposition for printing
-        factors = find_factors(max_procs)
-        closest_factors = min(factors, key=lambda x: abs(x[0] - x[1]))
-        ntasks_x, ntasks_y = closest_factors
-        e_we_decomp, e_sn_decomp, e_we_remainder, e_sn_remainder = (
-            calculate_decomposition(args[0], args[1], ntasks_x, ntasks_y)
-        )
-        translate_procs_to_node("Maximum", max_procs, cores_per_node)
-        print_domain_decomposition(
-            max_procs,
-            e_we_decomp,
-            e_sn_decomp,
-            e_we_remainder,
-            e_sn_remainder,
-            ntasks_x,
-            ntasks_y,
-        )
-    return max_procs, max_nodes
-
-
 def translate_procs_to_node(strategy, total_processors, cores_per_node=128):
     """
     Translate the total number of processors to the number of nodes required based on a strategy.
@@ -376,6 +281,80 @@ def translate_procs_to_node(strategy, total_processors, cores_per_node=128):
     print(message)
 
 
+def print_domain_decomposition(
+    max_procs,
+    e_we_decomp,
+    e_sn_decomp,
+    e_we_remainder,
+    e_sn_remainder,
+    ntasks_x,
+    ntasks_y,
+    show_schematic=False,
+):
+    """
+    Print a text representation of the domain decomposition.
+
+    Args:
+        max_procs (int): Total number of processors.
+        e_we_decomp (int): Grid points per tile in the i-direction (x).
+        e_sn_decomp (int): Grid points per tile in the j-direction (y).
+        e_we_remainder (int): Remaining grid points in the i-direction.
+        e_sn_remainder (int): Remaining grid points in the j-direction.
+        ntasks_x (int): Number of tasks (tiles) in the i-direction.
+        ntasks_y (int): Number of tasks (tiles) in the j-direction.
+        show_schematic (bool): Whether to print the schematic.
+    """
+
+    # Build the base tile representation
+    base_tile = f"{e_we_decomp}x{e_sn_decomp}"
+    remainder_tile_x = f"{e_we_remainder}x{e_sn_decomp}" if e_we_remainder > 0 else ""
+    remainder_tile_y = f"{e_we_decomp}x{e_sn_remainder}" if e_sn_remainder > 0 else ""
+    remainder_tile_corner = (
+        f"{e_we_remainder}x{e_sn_remainder}"
+        if e_we_remainder > 0 and e_sn_remainder > 0
+        else ""
+    )
+
+    print("-" * 40)
+    print(f"Domain Decomposition Layout with {max_procs} Processes:")
+
+    # Print out the tiles row by row
+    if show_schematic:
+        for y in range(ntasks_y):
+            row = " | ".join([base_tile] * ntasks_x)
+            if remainder_tile_x:
+                row += " | " + remainder_tile_x
+            print(row)
+
+        # Print the remainder row if needed
+        if remainder_tile_y:
+            row = " | ".join([remainder_tile_y] * ntasks_x)
+            if remainder_tile_corner:
+                row += " | " + remainder_tile_corner
+            print(row)
+
+        print("-" * 40)
+
+    print("Summary:")
+    print(
+        f"  Base tile size : {base_tile} (each tile has {e_we_decomp} x {e_sn_decomp} grid points)"
+    )
+    print(f"  Total tiles    : {ntasks_x} x {ntasks_y}")
+    if e_we_remainder > 0:
+        print(
+            f"  Extra column with tile size : {e_we_remainder} x {e_sn_decomp} (added to the right)"
+        )
+    if e_sn_remainder > 0:
+        print(
+            f"  Extra row with tile size    : {e_we_decomp} x {e_sn_remainder} (added to the bottom)"
+        )
+    if remainder_tile_corner:
+        print(
+            f"  Extra corner tile size      : {remainder_tile_corner} (added at the bottom-right corner)"
+        )
+    print("-" * 40)
+
+
 def find_max_processors(
     e_we,
     e_sn,
@@ -384,6 +363,7 @@ def find_max_processors(
     min_grid_points,
     processors_min,
     processors_max,
+    show_schematic=False,
 ):
     """
     Determine the maximum number of processors and nodes that can be used.
@@ -545,6 +525,33 @@ def find_max_processors(
     return 0, 0
 
 
+def find_max_processors_with_print(*args, **kwargs):
+    max_procs, max_nodes = find_max_processors(*args, **kwargs)
+    cores_per_node = kwargs.get("cores", 128)
+    show_schematic = kwargs.get("show_schematic", False)
+
+    if max_procs > 0:
+        # Recompute decomposition for printing
+        factors = find_factors(max_procs)
+        closest_factors = min(factors, key=lambda x: abs(x[0] - x[1]))
+        ntasks_x, ntasks_y = closest_factors
+        e_we_decomp, e_sn_decomp, e_we_remainder, e_sn_remainder = (
+            calculate_decomposition(args[0], args[1], ntasks_x, ntasks_y)
+        )
+        translate_procs_to_node("Maximum", max_procs, cores_per_node)
+        print_domain_decomposition(
+            max_procs,
+            e_we_decomp,
+            e_sn_decomp,
+            e_we_remainder,
+            e_sn_remainder,
+            ntasks_x,
+            ntasks_y,
+            show_schematic,
+        )
+    return max_procs, max_nodes
+
+
 def main():
     args = parse_arguments()
 
@@ -583,6 +590,8 @@ def main():
         translate_procs_to_node("Minimum", processors_min, args.cores)
 
         cores_per_node = args.cores
+        show_schematic = (args.decomp_schematic,)
+
         # Determine max processors and nodes based on decomposition logic within bounds
         max_procs, max_nodes = find_max_processors_with_print(
             e_we,
@@ -592,6 +601,7 @@ def main():
             MIN_GRID_POINTS,
             processors_min,
             processors_max,
+            show_schematic,
         )
 
 
