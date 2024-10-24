@@ -323,7 +323,7 @@ def print_domain_decomposition(
 
     print("-" * 40)
     print(f"Domain Decomposition Layout with {max_procs} Processes:")
-
+    print(show_schematic)
     # Print out the tiles row by row
     if show_schematic:
         for y in range(ntasks_y):
@@ -533,8 +533,10 @@ def find_max_processors(
 
 def find_max_processors_with_print(*args, **kwargs):
     max_procs, max_nodes = find_max_processors(*args, **kwargs)
+
+    show_schematic = kwargs.pop("show_schematic", False)
     cores_per_node = kwargs.get("cores", 128)
-    show_schematic = kwargs.get("show_schematic", False)
+    # show_schematic = kwargs.get("show_schematic", False)
 
     if max_procs > 0:
         # Recompute decomposition for printing
@@ -598,18 +600,19 @@ def main():
         translate_procs_to_node("Minimum", processors_min, args.cores)
 
         cores_per_node = args.cores
-        show_schematic = (args.decomp_schematic,)
+        show_schematic = args.decomp_schematic
+        print(show_schematic)
 
         # Determine max processors and nodes based on decomposition logic within bounds
         max_procs, max_nodes = find_max_processors_with_print(
             e_we,
             e_sn,
-            cores_per_node,
-            NODE_MAX,
-            MIN_GRID_POINTS,
-            processors_min,
-            processors_max,
-            show_schematic,
+            cores_per_node=cores_per_node,
+            node_max=NODE_MAX,
+            min_grid_points=MIN_GRID_POINTS,
+            processors_min=processors_min,
+            processors_max=processors_max,
+            show_schematic=show_schematic,
         )
 
 
