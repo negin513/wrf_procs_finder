@@ -1,106 +1,203 @@
-# wrf_num_procs.py
+# WRF Processor Configuration Tool
 
-**A script to find the minimum and maximum number of processes for running WRF and plot schematic of domain decomposition.**
+A tool to determine the optimal number of processors for WRF simulations and visualize domain decomposition.
 
 ## Overview
 
-`wrf_num_procs.py` determines the minimum and maximum number of processes and nodes based on the domain's grid points in the i/j directions. 
-It ensures that each processor handles at least a minimum number of grid points (i.e. 10 grids/tasks), optimizing computational resources for WRF simulations. 
+`wrf_num_procs.py` analyzes WRF domain configurations to determine:
+- Minimum and maximum number of processors based on grid dimensions
+- Optimal decomposition layout for parallel execution
+
+The tool ensures each processor handles at least 10 grid points (the WRF minimum for adequate computation space beyond halo regions).
 
 This script is adapted from a discussion on the [UCAR MMM Forum](https://forum.mmm.ucar.edu/threads/choosing-an-appropriate-number-of-processors.5082/).
 
+## Background
+
+### WRF Domain Decomposition
+
+When running WRF in parallel, the domain is divided into tiles (one per processor). Each tile has:
+- **Halo regions**: 5 rows/columns on each side for inter-processor communication
+- **Computation space**: The interior region where actual calculations occur
+
+To avoid tiles that are entirely halo regions, each tile must have at least **10 grid points per side**.
+
+### Decomposition Strategy
+
+The decomposition uses the two closest factors of the processor count to create near-square tile layouts:
+- 16 processors -> 4x4 tiles (optimal)
+- 11 processors -> 1x11 tiles (poor - prime number)
+
+### Processor Bounds
+
+For **nested domains**, processor limits are determined by:
+- **Maximum processors**: Based on the **smallest** domain using `(e_we/10) * (e_sn/10)`
+- **Minimum processors**: Based on the **largest** domain using `(e_we/100) * (e_sn/100)`
+
+## Installation
+
+No installation required. Just ensure Python 3 is available:
+
+```bash
+chmod +x wrf_num_procs.py
+```
+
 ## Usage
-This script can read in the domain size from a namelist file or from the command line.
 
-Example:
+### Basic Usage (Command Line)
 
-```
-    ./wrf_num_procs.py --e_we 320 --e_sn 180
-```
-Example Output:
-```
-========================================
-Domain 1: e_we=320, e_sn=180
-Minimum number of processors: 3 --> Requiring 1 nodes using (3 procs/node)
-Maximum number of processors: 256 --> Requiring 2 nodes using (128 procs/node)
-----------------------------------------
-Domain Decomposition Layout with 256 Processes:
-False
-Summary:
-  Base tile size : 20x11 (each tile has 20 x 11 grid points)
-  Total tiles    : 16 x 16
-  Extra row with tile size    : 20 x 4 (added to the bottom)
-----------------------------------------
+```bash
+./wrf_num_procs.py --e_we 320 --e_sn 180
 ```
 
+### Multiple Domains
 
-#### Using Namelist
-The script can read the domain size from a namelist file and find the minimum and maximum number of processes for each domain.
-
-```
-    ./wrf_num_procs.py --namelist namelist.input
-
+```bash
+./wrf_num_procs.py --e_we 220 150 --e_sn 214 130
 ```
 
-## Domain Decomposition Schematic
-The script can also plot a schematic of the domain decomposition using the `--decomp` flag or `--decomp_schematic` flag.
+### Using Namelist File
 
-The goal is to help with decomposition imbalance and visualize how the domain is decomposed into tiles and how many grid points are assigned to each processor.
-
-Example:
-```
-./wrf_num_procs.py --e_we 320 --e_sn 180 --cores 128 --decomp
-========================================
-Domain 1: e_we=320, e_sn=180
-Minimum number of processors: 3 --> Requiring 1 nodes using (3 procs/node)
-Maximum number of processors: 256 --> Requiring 2 nodes using (128 procs/node)
-----------------------------------------
-Domain Decomposition Layout with 256 Processes:
-True
-20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11
-20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11
-20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11
-20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11
-20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11
-20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11
-20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11
-20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11
-20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11
-20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11
-20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11
-20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11
-20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11
-20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11
-20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11
-20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11 | 20x11
-20x4 | 20x4 | 20x4 | 20x4 | 20x4 | 20x4 | 20x4 | 20x4 | 20x4 | 20x4 | 20x4 | 20x4 | 20x4 | 20x4 | 20x4 | 20x4
-----------------------------------------
-Summary:
-  Base tile size : 20x11 (each tile has 20 x 11 grid points)
-  Total tiles    : 16 x 16
-  Extra row with tile size    : 20 x 4 (added to the bottom)
-----------------------------------------
+```bash
+./wrf_num_procs.py --namelist namelist.input
 ```
 
+### With Decomposition Schematic
 
-## Arguments
-The script requires the following arguments:
+```bash
+./wrf_num_procs.py --e_we 320 --e_sn 180 --decomp
 ```
-./wrf_num_procs.py --help
-usage: wrf_num_procs.py [-h] [--cores CORES] [--e_we E_WE [E_WE ...]] [--e_sn E_SN [E_SN ...]] [--namelist NAMELIST] [--decomp] [--debug]
 
-Determine the minimum and maximum number of processors and nodes based on number grid points.
+## Example Output
 
-options:
-  -h, --help            show this help message and exit
-  --cores CORES         Number of cores per node (e.g., Derecho: 128 cores/node) [default = 128]
-  --e_we E_WE [E_WE ...]
-                        e_we values if not using namelist
-  --e_sn E_SN [E_SN ...]
-                        e_sn values if not using namelist
-  --namelist NAMELIST   Path to namelist file containing e_we and e_sn
-  --decomp, --decomp_schematic
-                        Print domain decomposition schematic!
-  --debug               Enable debug mode for detailed output
+### Single Domain
 
 ```
+============================================================
+  WRF Processor Configuration Analysis
+============================================================
+  Cores per node    : 128
+  Min grid points   : 10 per processor
+  Max grid points   : 100 per processor
+  Domains to analyze: 1
+    Domain 1: e_we = 320, e_sn = 180
+============================================================
+
+------------------------------------------------------------
+  DOMAIN 1 of 1
+------------------------------------------------------------
+  Grid dimensions: 320 x 180 (57,600 total grid points)
+
+  Processor range:
+  Minimum.............      3 processors  =>  1 node @ 3 cores/node
+  Maximum.............    256 processors  =>  2 nodes @ 128 cores/node
+
+  Decomposition for 256 processors:
+    Tile layout     : 16 x 16 = 256 tiles
+    Grid per tile   : 20 x 11 points
+    Remainder       : +4 in y
+    Bottom edge     : 20x4 (16 tiles)
+
+  Namelist settings:
+    nproc_x = 16
+    nproc_y = 16
+
+============================================================
+  Analysis complete
+============================================================
+```
+
+### Nested Domains
+
+```
+============================================================
+  WRF Processor Configuration Analysis
+============================================================
+  Cores per node    : 128
+  Min grid points   : 10 per processor
+  Max grid points   : 100 per processor
+  Domains to analyze: 2
+    Domain 1: e_we = 220, e_sn = 214
+    Domain 2: e_we = 150, e_sn = 130
+============================================================
+
+------------------------------------------------------------
+  DOMAIN 1 of 2
+------------------------------------------------------------
+  Grid dimensions: 220 x 214 (47,080 total grid points)
+
+  Processor range:
+  Minimum.............      4 processors  =>  1 node @ 4 cores/node
+  Maximum.............    256 processors  =>  2 nodes @ 128 cores/node
+
+  Decomposition for 256 processors:
+    Tile layout     : 16 x 16 = 256 tiles
+    Grid per tile   : 13 x 13 points
+    Remainder       : +12 in x, +6 in y
+    Right edge      : 12x13 (16 tiles)
+    Bottom edge     : 13x6 (16 tiles)
+    Corner          : 12x6 (1 tile)
+
+  Namelist settings:
+    nproc_x = 16
+    nproc_y = 16
+
+------------------------------------------------------------
+  DOMAIN 2 of 2
+------------------------------------------------------------
+  Grid dimensions: 150 x 130 (19,500 total grid points)
+
+  Processor range:
+  Minimum.............      1 processors  =>  1 node @ 1 cores/node
+  Maximum.............    121 processors  =>  1 node @ 121 cores/node
+
+  Decomposition for 121 processors:
+    Tile layout     : 11 x 11 = 121 tiles
+    Grid per tile   : 13 x 11 points
+    Remainder       : +7 in x, +9 in y
+    Right edge      : 7x11 (11 tiles)
+    Bottom edge     : 13x9 (11 tiles)
+    Corner          : 7x9 (1 tile)
+
+  Namelist settings:
+    nproc_x = 11
+    nproc_y = 11
+
+============================================================
+  Analysis complete
+============================================================
+```
+
+## Command Line Arguments
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `--cores` | Number of cores per node | 128 |
+| `--e_we` | Grid points in west-east direction (one or more values) | - |
+| `--e_sn` | Grid points in south-north direction (one or more values) | - |
+| `--namelist` | Path to WRF namelist file | - |
+| `--decomp` | Show domain decomposition schematic | False |
+| `--debug` | Enable debug output | False |
+
+## Output Explanation
+
+### Decomposition Information
+
+- **Tile layout**: Number of tiles in x and y directions (nproc_x x nproc_y)
+- **Grid per tile**: Base grid points per tile (e_we/nproc_x x e_sn/nproc_y)
+- **Remainder**: Extra grid points distributed to edge tiles
+- **Right edge**: Tile size for the rightmost column (has extra x points)
+- **Bottom edge**: Tile size for the bottom row (has extra y points)
+- **Corner**: Tile size for the bottom-right corner (has extra x and y points)
+
+## Tips
+
+1. **Avoid prime numbers** for processor counts - they result in 1xN decompositions
+2. **Stay close to square** decompositions for better load balancing
+3. **For nested domains**, use the smallest domain's max processors as your upper limit
+4. **If simulations fail**, try using more processors (decomposition may be too coarse)
+
+## References
+
+- [UCAR MMM Forum: Choosing an appropriate number of processors](https://forum.mmm.ucar.edu/threads/choosing-an-appropriate-number-of-processors.5082/)
+- [WRF User's Guide](https://www2.mmm.ucar.edu/wrf/users/)
