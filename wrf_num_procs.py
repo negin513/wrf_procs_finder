@@ -19,10 +19,11 @@ Arguments:
     --e_sn       Grid points in south-north direction (one or more values)
     --namelist   Path to namelist file containing e_we, e_sn, and max_dom
     --decomp     Show domain decomposition schematic
+    --ascii      Use ASCII borders in schematic (instead of Unicode box-drawing)
     --debug      Enable debug mode for detailed output
 
 WRF Domain Decomposition Background:
-    The domain is divided into tiles (1 tile per processor). Each tile has 5 rows/columns
+    The domain is divided into tiles (1 tile per proc). Each tile has 5 rows/columns
     of "halo" regions on each side for inter-processor communication. To ensure adequate
     computation space beyond halos, each tile must have at least 10 grid points per side.
 
@@ -50,8 +51,8 @@ import re
 
 # Configuration Parameters
 NODE_MAX = 200  # The maximum number of nodes to consider
-MIN_GRID_POINTS = 10  # The minimum number of grid points per processor
-MAX_GRID_POINTS = 100  # The maximum number of grid points per processor
+MIN_GRID_POINTS = 10  # The minimum number of grid points per proc
+MAX_GRID_POINTS = 100  # The maximum number of grid points per proc
 
 
 def parse_arguments():
@@ -99,6 +100,11 @@ def parse_arguments():
         "--debug",
         action="store_true",
         help="Enable debug mode for detailed output",
+    )
+    parser.add_argument(
+        "--ascii",
+        action="store_true",
+        help="Use ASCII characters for schematic borders (instead of Unicode)",
     )
 
     return parser.parse_args()
@@ -205,9 +211,9 @@ def calculate_processor_bounds(
         e_we (int): Grid points in the i-direction.
         e_sn (int): Grid points in the j-direction.
         cores_per_node (int): Number of cores per node.
-        min_grid_points (int, optional): Minimum grid points per processor. Defaults to MIN_GRID_POINTS.
-        max_grid_points (int, optional): Maximum grid points per processor. Defaults to MAX_GRID_POINTS.
-        suggested_grid_point (int, optional): Suggested starting grid points per processor. Defaults to 24.
+        min_grid_points (int, optional): Minimum grid points per proc. Defaults to MIN_GRID_POINTS.
+        max_grid_points (int, optional): Maximum grid points per proc. Defaults to MAX_GRID_POINTS.
+        suggested_grid_point (int, optional): Suggested starting grid points per proc. Defaults to 24.
 
     Returns:
         tuple: (processors_min, processors_max, suggested_processors, suggested_nodes)
@@ -300,7 +306,7 @@ def translate_procs_to_node(strategy, total_processors, cores_per_node=128):
     num_nodes = math.ceil(total_processors / cores_per_node)
 
     node_word = "node" if num_nodes == 1 else "nodes"
-    print(f"  {strategy:.<20} {total_processors:>6} processors  =>  {num_nodes} {node_word} @ {effective_cores} cores/node")
+    print(f"    {strategy:.<30} {total_processors:>6} procs  =>  {num_nodes} {node_word} @ {effective_cores} cores/node")
 
 
 def print_domain_decomposition(
@@ -312,6 +318,7 @@ def print_domain_decomposition(
     ntasks_x,
     ntasks_y,
     show_schematic=False,
+    use_ascii=False,
 ):
     """
     Print a text representation of the domain decomposition.
@@ -328,7 +335,7 @@ def print_domain_decomposition(
     """
 
     print()
-    print(f"  Decomposition for {max_procs} processors:")
+    print(f"  Decomposition for {max_procs} procs:")
 
     # Print out the tiles as a compact schematic
     if show_schematic:
@@ -336,12 +343,13 @@ def print_domain_decomposition(
         print_decomposition_schematic(
             ntasks_x, ntasks_y,
             e_we_decomp, e_sn_decomp,
-            e_we_remainder, e_sn_remainder
+            e_we_remainder, e_sn_remainder,
+            use_ascii=use_ascii,
         )
         print()
 
     print(f"    Tile layout     : {ntasks_x} x {ntasks_y} = {ntasks_x * ntasks_y} tiles")
-    print(f"    Grid per tile   : {e_we_decomp} x {e_sn_decomp} points")
+    print(f"    Grid per tile   : {e_we_decomp} x {e_sn_decomp} grid points")
 
     # Show remainder info only if there are remainders
     has_x_remainder = e_we_remainder > 0
@@ -375,12 +383,32 @@ def print_decomposition_schematic(
     ntasks_x, ntasks_y,
     e_we_decomp, e_sn_decomp,
     e_we_remainder, e_sn_remainder,
+    use_ascii=False,
 ):
     """
     Print a visual schematic of the domain decomposition.
 
-    Shows all tiles in a grid with pipe separators.
+    Shows all tiles in a grid with borders.
+
+    Args:
+        ntasks_x (int): Number of tiles in x-direction.
+        ntasks_y (int): Number of tiles in y-direction.
+        e_we_decomp (int): Grid points per tile in x-direction.
+        e_sn_decomp (int): Grid points per tile in y-direction.
+        e_we_remainder (int): Remainder grid points in x-direction.
+        e_sn_remainder (int): Remainder grid points in y-direction.
+        use_ascii (bool): Use ASCII characters instead of Unicode box-drawing.
     """
+    # Box-drawing characters
+    if use_ascii:
+        H, V = "-", "|"
+        TL, TR, BL, BR = "+", "+", "+", "+"
+        TJ, BJ, LJ, RJ, X = "+", "+", "+", "+", "+"
+    else:
+        H, V = "─", "│"
+        TL, TR, BL, BR = "┌", "┐", "└", "┘"
+        TJ, BJ, LJ, RJ, X = "┬", "┴", "├", "┤", "┼"
+
     has_x_remainder = e_we_remainder > 0
     has_y_remainder = e_sn_remainder > 0
 
@@ -390,7 +418,7 @@ def print_decomposition_schematic(
     y_rem_tile = f"{e_we_decomp}x{e_sn_remainder}" if has_y_remainder else ""
     corner_tile = f"{e_we_remainder}x{e_sn_remainder}" if has_x_remainder and has_y_remainder else ""
 
-    # Calculate max width for alignment
+    # Calculate max width for alignment (add padding)
     all_tiles = [base_tile]
     if x_rem_tile:
         all_tiles.append(x_rem_tile)
@@ -398,21 +426,48 @@ def print_decomposition_schematic(
         all_tiles.append(y_rem_tile)
     if corner_tile:
         all_tiles.append(corner_tile)
-    cell_width = max(len(t) for t in all_tiles)
+    cell_width = max(len(t) for t in all_tiles) + 2  # +2 for padding
 
-    # Print regular rows
-    for row in range(ntasks_y):
-        tiles = [base_tile.center(cell_width)] * ntasks_x
-        if has_x_remainder:
-            tiles.append(x_rem_tile.center(cell_width))
-        print("    " + " | ".join(tiles))
+    # Determine column count
+    num_cols = ntasks_x + (1 if has_x_remainder else 0)
 
-    # Print bottom remainder row if exists
-    if has_y_remainder:
-        tiles = [y_rem_tile.center(cell_width)] * ntasks_x
-        if has_x_remainder:
-            tiles.append(corner_tile.center(cell_width))
-        print("    " + " | ".join(tiles))
+    # Build horizontal separator lines
+    def make_hsep(left, mid, right, fill):
+        segments = [fill * cell_width] * num_cols
+        return "    " + left + mid.join(segments) + right
+
+    top_border = make_hsep(TL, TJ, TR, H)
+    mid_border = make_hsep(LJ, X, RJ, H)
+    bot_border = make_hsep(BL, BJ, BR, H)
+
+    # Build a data row
+    def make_row(tiles):
+        cells = [t.center(cell_width) for t in tiles]
+        return "    " + V + V.join(cells) + V
+
+    # Determine total rows
+    total_rows = ntasks_y + (1 if has_y_remainder else 0)
+
+    # Print the schematic
+    print(top_border)
+    for row_idx in range(total_rows):
+        is_remainder_row = has_y_remainder and row_idx == total_rows - 1
+
+        if is_remainder_row:
+            tiles = [y_rem_tile] * ntasks_x
+            if has_x_remainder:
+                tiles.append(corner_tile)
+        else:
+            tiles = [base_tile] * ntasks_x
+            if has_x_remainder:
+                tiles.append(x_rem_tile)
+
+        print(make_row(tiles))
+
+        if row_idx < total_rows - 1:
+            print(mid_border)
+
+    print(bot_border)
 
 
 def find_max_processors(
@@ -430,7 +485,7 @@ def find_max_processors(
         e_sn (int): Grid points in the j-direction.
         cores_per_node (int): Number of cores per node.
         node_max (int): Maximum number of nodes to consider.
-        min_grid_points (int): Minimum grid points per processor.
+        min_grid_points (int): Minimum grid points per proc.
 
     Returns:
         tuple: Maximum processors and nodes.
@@ -596,24 +651,30 @@ def main():
     total_domains = len(domain_pairs)
     print()
     print("=" * 60)
-    print("  WRF Processor Configuration Analysis")
+    print("  WRF Domain Decomposition Analysis")
     print("=" * 60)
     print(f"  Cores per node    : {args.cores}")
-    print(f"  Min grid points   : {MIN_GRID_POINTS} per processor")
-    print(f"  Max grid points   : {MAX_GRID_POINTS} per processor")
+    print(f"  Min grid points   : {MIN_GRID_POINTS} per proc")
+    print(f"  Max grid points   : {MAX_GRID_POINTS} per proc")
     print(f"  Domains to analyze: {total_domains}")
     for idx, (e_we, e_sn) in enumerate(domain_pairs):
         print(f"    Domain {idx + 1}: e_we = {e_we}, e_sn = {e_sn}")
     print("=" * 60)
+
+    # Track min/max across all domains for combined summary
+    all_mins = []
+    all_maxs = []
 
     for idx, (e_we, e_sn) in enumerate(domain_pairs):
         print()
         print("-" * 60)
         print(f"  DOMAIN {idx + 1} of {total_domains}")
         print("-" * 60)
-        print(f"  Grid dimensions: {e_we} x {e_sn} ({e_we * e_sn:,} total grid points)")
+        print(f"  e_we = {e_we}")
+        print(f"  e_sn = {e_sn}")
+        print(f"  Total grid points: {e_we} x {e_sn} = {e_we * e_sn:,}")
         print()
-        print("  Processor range:")
+        print("  nprocs range:")
 
         # Calculate maximum and minimum processors based on domain size
         processors_min, processors_max = calculate_processor_bounds(
@@ -647,13 +708,32 @@ def main():
                 ntasks_x,
                 ntasks_y,
                 args.decomp_schematic,
+                args.ascii,
             )
 
-    # Print footer
-    print()
-    print("=" * 60)
-    print("  Analysis complete")
-    print("=" * 60)
+        # Track for combined summary
+        all_mins.append(max(1, processors_min))
+        all_maxs.append(max_procs if max_procs > 0 else processors_max)
+
+    # Print combined summary for multiple domains
+    if total_domains > 1:
+        print()
+        print("=" * 60)
+        print("  COMBINED NPROCS RANGE (all domains)")
+        print("=" * 60)
+        combined_min = max(all_mins)  # Limited by largest domain
+        combined_max = min(all_maxs)  # Limited by smallest domain
+
+        if combined_min > combined_max:
+            print()
+            print("  WARNING: No valid nprocs range exists!")
+            print("  The domains vary too much in size.")
+            print("  Consider using ndown to run domains separately.")
+        else:
+            print("  nprocs range:")
+            translate_procs_to_node("Minimum (largest domain)", combined_min, args.cores)
+            translate_procs_to_node("Maximum (smallest domain)", combined_max, args.cores)
+
     print()
 
 
