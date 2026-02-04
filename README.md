@@ -1,18 +1,21 @@
+# WRF Processor/MPI Rank Decomposition Tool
+
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-# WRF Processor Configuration Tool
+A tool to determine the valid procs range for WRF simulations and visualize domain decomposition.
 
-A tool to determine the valid processor range for WRF simulations and visualize domain decomposition.
-Matches WRF's actual validation logic from `share/module_check_a_mundo.F`.
+This matches WRF's actual validation logic from `share/module_check_a_mundo.F`.
+
+
 
 ## Overview
 
 `wrf_num_procs.py` analyzes WRF domain configurations to determine:
-- Minimum and maximum number of processors based on grid dimensions
+- Minimum and maximum number of procs based on grid dimensions
 - Decomposition layout for parallel execution
 - Node requirements based on procs per node
 
-The tool ensures each processor handles at least 10 grid points (the WRF minimum for adequate computation space beyond halo regions).
+The tool ensures each procs handles at least 10 grid points (the WRF minimum for adequate computation space beyond halo regions).
 
 This script is adapted from a discussion on the [UCAR MMM Forum](https://forum.mmm.ucar.edu/threads/choosing-an-appropriate-number-of-processors.5082/).
 
@@ -55,6 +58,8 @@ Each tile has:
 - **Halo regions**: 5 rows/columns on each side for inter-processor communication
 - **Computation space**: The interior region where actual calculations occur
 
+Here is a tile structure:
+
 ```
               Single Tile Structure
   ┌─────────────────────────────────────────┐
@@ -87,21 +92,39 @@ Each tile has:
 WRF requires each tile to have ≥ 10 grid points in both directions. This ensures adequate computation space beyond the halo regions.
 
 From WRF source (`share/module_check_a_mundo.F`):
+
 ```fortran
 IF ( ( e_we / nproc_x .LT. 10 ) .OR. ( e_sn / nproc_y .LT. 10 ) ) THEN
     ! FATAL ERROR
 ```
 
-### Decomposition Strategy
 
-WRF decomposition uses the two closest factors of the processor count to create near-square tile layouts:
-- 16 processors → 4×4 tiles (good)
+If you have fewer than 10 grid points in either direction, WRF will fail with an error like this: 
+```
+For domain 1 , the domain size is too small for this many processors, or
+the decomposition aspect ratio is poor.
+Minimum decomposed computational patch size, either x-dir or y-dir, is 10 grid cells.
+e_we = 75, nproc_x = 10, with cell width in x-direction = 7
+e_sn = 70, nproc_y = 10, with cell width in y-direction = 7
+--- ERROR: Reduce the MPI rank count, or redistribute the tasks.
+-------------- FATAL CALLED ---------------
+FATAL CALLED FROM FILE:  <stdin>  LINE:    XXXX
+NOTE: 1 namelist settings are wrong. Please check and reset these options
+-------------------------------------------
+```
+
+### Domain Decomposition Strategy
+
+WRF decomposes the domain by finding the two closest factors of the processor count to create near-square tile layouts. For example, 16 processors become 4×4 in x and y directions (not 2×8), since 4 and 4 are the closest factor pair.
+
+
+Square layouts minimize inter-processor communication because they have the smallest perimeter-to-area ratio, but users can override this by setting `nproc_x` and `nproc_y` explicitly in `namelist.input`. 
+
+- 16 processors → 4×4 tiles (good) 
+- 16 processors → 8×2 tiles (bad)
 - 11 processors → 1×11 tiles (poor - prime number)
 
-### Processor Bounds for Nested Domains
-
-- **Maximum processors**: Based on the **smallest** domain → `(e_we/10) * (e_sn/10)`
-- **Minimum processors**: Based on the **largest** domain → `(e_we/100) * (e_sn/100)`
+Avoid prime numbers when choosing processor counts —> they always result in 1×N layouts.
 
 ## Example Output
 
@@ -149,59 +172,115 @@ Running with the example namelist (`./wrf_num_procs.py --namelist examples/namel
 ### With Decomposition Schematic (--decomp)
 
 ```
-  Decomposition for 128 procs:
+./wrf_num_procs.py --e_we 180 --e_sn 200 --decomp
 
-    ┌───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┐
-    │ 18x8  │ 18x8  │ 18x8  │ 18x8  │ 18x8  │ 18x8  │ 18x8  │ 18x8  │
-    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
-    │ 18x8  │ 18x8  │ 18x8  │ 18x8  │ 18x8  │ 18x8  │ 18x8  │ 18x8  │
-    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
-    ...
-    └───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┘
 
-      Layout    :    8 x 16  tiles
-      Avg tile  :  ~18 x 8   grid points
+
+------------------------------------------------------------
+  DOMAIN 1 of 1
+------------------------------------------------------------
+  e_we = 180
+  e_sn = 200
+  Total grid points: 180 x 200 = 36,000
+
+  nprocs range:
+    Minimum.......................      2 procs  =>  1 node @ 2 procs/node
+    Maximum.......................    256 procs  =>  2 nodes @ 128 procs/node
+
+  Decomposition for 256 procs:
+
+    ┌───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┐
+    │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │  4x12 │
+    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+    │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │  4x12 │
+    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+    │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │  4x12 │
+    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+    │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │  4x12 │
+    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+    │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │  4x12 │
+    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+    │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │  4x12 │
+    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+    │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │  4x12 │
+    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+    │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │  4x12 │
+    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+    │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │  4x12 │
+    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+    │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │  4x12 │
+    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+    │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │  4x12 │
+    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+    │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │  4x12 │
+    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+    │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │  4x12 │
+    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+    │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │  4x12 │
+    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+    │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │  4x12 │
+    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+    │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │ 11x12 │  4x12 │
+    ├───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┼───────┤
+    │  11x8 │  11x8 │  11x8 │  11x8 │  11x8 │  11x8 │  11x8 │  11x8 │  11x8 │  11x8 │  11x8 │  11x8 │  11x8 │  11x8 │  11x8 │  11x8 │  4x8  │
+    └───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┘
+
+      Layout    :   16 x 16  tiles
+      Avg tile  : ~ 11 x 12  grid points
+
+============================================================
+  NOTES
+============================================================
+  ⚠ The maximum nprocs shown is the UPPER LIMIT that avoids
+    decomposition errors (each tile ≥ 10 grid points).
+
+    This does NOT mean it's the optimal choice!
+
+    Using max procs may cause:
+      • Excessive inter-tile communication overhead
+      • Slower performance than fewer processors
+
+    Start with a value in the middle of the valid range,
+    then benchmark to find the best performance.
+============================================================
 ```
 
-### Warning for Incompatible Domains
-
-If domains vary too much in size, the valid ranges may not overlap:
-
-```
-  WARNING: No valid nprocs range exists!
-  The domains vary too much in size.
-  Consider using ndown to run domains separately.
-```
 
 ## Command Line Arguments
 
-| Argument | Description | Default |
-|----------|-------------|---------|
-| `--cores` | Number of cores per node | 128 |
-| `--e_we` | Grid points in west-east direction (one or more values) | - |
-| `--e_sn` | Grid points in south-north direction (one or more values) | - |
-| `--namelist` | Path to WRF namelist file | - |
-| `--decomp` | Show domain decomposition schematic | False |
-| `--ascii` | Use ASCII characters for schematic borders | False |
-| `--verbose`, `-v` | Show detailed output (remainders, namelist settings) | False |
-| `--quiet`, `-q` | Suppress notes and warnings | False |
-| `--debug` | Enable debug output | False |
+| Argument | Description |
+|----------|-------------|
+| `--cores` | Number of cores per node |
+| `--e_we` | Grid points in west-east direction (one or more values) |
+| `--e_sn` | Grid points in south-north direction (one or more values) |
+| `--namelist` | Path to WRF namelist file |
+| `--decomp` | Show domain decomposition schematic |
+| `--ascii` | Use ASCII characters for schematic borders |
+| `--verbose`, `-v` | Show detailed output (remainders, namelist settings) |
+| `--quiet`, `-q` | Suppress notes and warnings |
 
 ## Derecho Support
 
-When running on NCAR's Derecho supercomputer, the tool automatically generates PBS select lines:
+When running on NCAR's Derecho supercomputer, the tool automatically generates PBS select lines. For example: 
 
 ```
   Derecho PBS (for max procs):
     #PBS -l select=2:ncpus=128:mpiprocs=128
 ```
 
-## Tips
+> [!WARNING]
+> **The maximum `nprocs` shown is an upper limit — not a recommendation.**
+>
+> This tool computes the *maximum* number of processors that avoids WRF domain decomposition errors (i.e., each tile has at least 10 grid points).  
+> Using the maximum value does **not** necessarily yield optimal performance.
+>
+> See the linked presentation for an explanation of why increasing MPI ranks does not always improve performance.
+>
+> **Recommendations:**
+> 1. Start with a value in the **middle** of the valid range  
+> 2. Prefer **near-square decompositions** (e.g., `64 = 8×8`) over skinny layouts (e.g., `64 = 4×16`)  
+> 3. Benchmark multiple configurations to find the performance sweet spot for your specific case
 
-1. **Don't use the maximum** - It's an upper limit, not a recommendation. Start in the middle of the valid range and benchmark.
-2. **Avoid prime numbers** for processor counts - they result in 1×N decompositions with poor communication patterns.
-3. **Prefer square decompositions** - 8×8 is better than 4×16 for the same processor count.
-4. **For nested domains**, use the combined range shown at the end.
 
 ## References
 
