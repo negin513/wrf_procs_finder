@@ -20,6 +20,7 @@ Arguments:
     --namelist   Path to namelist file containing e_we, e_sn, and max_dom
     --decomp     Show domain decomposition schematic
     --ascii      Use ASCII borders in schematic (instead of Unicode box-drawing)
+    --verbose    Show detailed remainder and edge tile information
     --debug      Enable debug mode for detailed output
 
 WRF Domain Decomposition Background:
@@ -105,6 +106,11 @@ def parse_arguments():
         "--ascii",
         action="store_true",
         help="Use ASCII characters for schematic borders (instead of Unicode)",
+    )
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Show detailed remainder and edge tile information",
     )
 
     return parser.parse_args()
@@ -220,7 +226,7 @@ def calculate_processor_bounds(
     """
     # Calculate maximum and minimum processors based on grid points
     processors_max = (e_we // min_grid_points) * (e_sn // min_grid_points)
-    processors_min = (e_we // max_grid_points) * (e_sn // max_grid_points)
+    processors_min = max(1, (e_we // max_grid_points) * (e_sn // max_grid_points))
 
     # Calculate suggested number of processors based on suggested_grid_point
     suggested_processors = (e_we // suggested_grid_point) * (
@@ -319,12 +325,13 @@ def print_domain_decomposition(
     ntasks_y,
     show_schematic=False,
     use_ascii=False,
+    verbose=False,
 ):
     """
     Print a text representation of the domain decomposition.
 
     Args:
-        max_procs (int): Total number of processors.
+        max_procs (int): Total number of procs.
         e_we_decomp (int): Grid points per tile in the i-direction (x).
         e_sn_decomp (int): Grid points per tile in the j-direction (y).
         e_we_remainder (int): Remaining grid points in the i-direction.
@@ -332,6 +339,8 @@ def print_domain_decomposition(
         ntasks_x (int): Number of tasks (tiles) in the i-direction.
         ntasks_y (int): Number of tasks (tiles) in the j-direction.
         show_schematic (bool): Whether to print the schematic.
+        use_ascii (bool): Use ASCII characters for schematic borders.
+        verbose (bool): Show detailed remainder and edge tile information.
     """
 
     print()
@@ -348,35 +357,33 @@ def print_domain_decomposition(
         )
         print()
 
-    print(f"    Tile layout     : {ntasks_x} x {ntasks_y} = {ntasks_x * ntasks_y} tiles")
-    print(f"    Grid per tile   : {e_we_decomp} x {e_sn_decomp} grid points")
-
-    # Show remainder info only if there are remainders
     has_x_remainder = e_we_remainder > 0
     has_y_remainder = e_sn_remainder > 0
-    has_remainder = has_x_remainder or has_y_remainder
-    if has_remainder:
-        remainder_parts = []
-        if has_x_remainder:
-            remainder_parts.append(f"+{e_we_remainder} in x")
-        if has_y_remainder:
-            remainder_parts.append(f"+{e_sn_remainder} in y")
-        print(f"    Remainder       : {', '.join(remainder_parts)}")
 
+    # Default compact output
+    print(f"      Layout    :  {ntasks_x:>3} x {ntasks_y:<3} tiles")
+    print(f"      Avg tile  : ~{e_we_decomp:>3} x {e_sn_decomp:<3} grid points")
+
+    # Verbose: show remainder info only if there are remainders
+    if verbose and (has_x_remainder or has_y_remainder):
+        print()
+        print(f"      Remainder:")
         # Show edge and corner tile sizes
         if has_x_remainder and has_y_remainder:
-            print(f"    Right edge      : {e_we_remainder}x{e_sn_decomp} ({ntasks_y} tiles)")
-            print(f"    Bottom edge     : {e_we_decomp}x{e_sn_remainder} ({ntasks_x} tiles)")
-            print(f"    Corner          : {e_we_remainder}x{e_sn_remainder} (1 tile)")
+            print(f"        Right edge:  {e_we_remainder:>3} x {e_sn_decomp:<3} ({ntasks_y} tiles)")
+            print(f"        Botm edge :  {e_we_decomp:>3} x {e_sn_remainder:<3} ({ntasks_x} tiles)")
+            print(f"        Corner    :  {e_we_remainder:>3} x {e_sn_remainder:<3} (1 tile)")
         elif has_x_remainder:
-            print(f"    Right edge      : {e_we_remainder}x{e_sn_decomp} ({ntasks_y} tiles)")
+            print(f"        Right edge:  {e_we_remainder:>3} x {e_sn_decomp:<3} ({ntasks_y} tiles)")
         elif has_y_remainder:
-            print(f"    Bottom edge     : {e_we_decomp}x{e_sn_remainder} ({ntasks_x} tiles)")
+            print(f"        Botm edge :  {e_we_decomp:>3} x {e_sn_remainder:<3} ({ntasks_x} tiles)")
 
-    print()
-    print(f"  Namelist settings:")
-    print(f"    nproc_x = {ntasks_x}")
-    print(f"    nproc_y = {ntasks_y}")
+    # Namelist settings (verbose only)
+    if verbose:
+        print()
+        print(f"  Namelist settings:")
+        print(f"    nproc_x = {ntasks_x}")
+        print(f"    nproc_y = {ntasks_y}")
 
 
 def print_decomposition_schematic(
@@ -647,19 +654,20 @@ def main():
         print(f"Error: {ve}", file=sys.stderr)
         sys.exit(1)
 
-    # Print header
+    # Print header (verbose only)
     total_domains = len(domain_pairs)
     print()
-    print("=" * 60)
-    print("  WRF Domain Decomposition Analysis")
-    print("=" * 60)
-    print(f"  Cores per node    : {args.cores}")
-    print(f"  Min grid points   : {MIN_GRID_POINTS} per proc")
-    print(f"  Max grid points   : {MAX_GRID_POINTS} per proc")
-    print(f"  Domains to analyze: {total_domains}")
-    for idx, (e_we, e_sn) in enumerate(domain_pairs):
-        print(f"    Domain {idx + 1}: e_we = {e_we}, e_sn = {e_sn}")
-    print("=" * 60)
+    if args.verbose:
+        print("=" * 60)
+        print("  WRF Domain Decomposition Analysis")
+        print("=" * 60)
+        print(f"  Cores per node    : {args.cores}")
+        print(f"  Min grid points   : {MIN_GRID_POINTS} per proc")
+        print(f"  Max grid points   : {MAX_GRID_POINTS} per proc")
+        print(f"  Domains to analyze: {total_domains}")
+        for idx, (e_we, e_sn) in enumerate(domain_pairs):
+            print(f"    Domain {idx + 1}: e_we = {e_we}, e_sn = {e_sn}")
+        print("=" * 60)
 
     # Track min/max across all domains for combined summary
     all_mins = []
@@ -709,6 +717,7 @@ def main():
                 ntasks_y,
                 args.decomp_schematic,
                 args.ascii,
+                args.verbose,
             )
 
         # Track for combined summary
