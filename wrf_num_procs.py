@@ -48,6 +48,7 @@ import os
 import math
 import logging
 import re
+import socket
 
 
 # Configuration Parameters
@@ -111,6 +112,11 @@ def parse_arguments():
         "--verbose", "-v",
         action="store_true",
         help="Show detailed remainder and edge tile information",
+    )
+    parser.add_argument(
+        "--quiet", "-q",
+        action="store_true",
+        help="Suppress notes and warnings",
     )
 
     return parser.parse_args()
@@ -312,7 +318,7 @@ def translate_procs_to_node(strategy, total_processors, cores_per_node=128):
     num_nodes = math.ceil(total_processors / cores_per_node)
 
     node_word = "node" if num_nodes == 1 else "nodes"
-    print(f"    {strategy:.<30} {total_processors:>6} procs  =>  {num_nodes} {node_word} @ {effective_cores} cores/node")
+    print(f"    {strategy:.<30} {total_processors:>6} procs  =>  {num_nodes} {node_word} @ {effective_cores} procs/node")
 
 
 def print_domain_decomposition(
@@ -625,6 +631,53 @@ def find_max_processors(
     return 0, 0
 
 
+def is_derecho():
+    """
+    Check if running on NCAR's Derecho supercomputer.
+
+    Returns:
+        bool: True if hostname suggests Derecho, False otherwise.
+    """
+    hostname = socket.gethostname().lower()
+    # Derecho login nodes: derecho1, derecho2, etc. or dec* compute nodes
+    return hostname.startswith("derecho") or hostname.startswith("dec")
+
+
+def get_pbs_select_line(nprocs, cores_per_node):
+    """
+    Generate the PBS select line for Derecho.
+
+    Args:
+        nprocs (int): Number of MPI processes.
+        cores_per_node (int): Cores per node.
+
+    Returns:
+        str: The PBS select line.
+    """
+    nodes = math.ceil(nprocs / cores_per_node)
+    return f"#PBS -l select={nodes}:ncpus={cores_per_node}:mpiprocs={min(nprocs, cores_per_node)}"
+
+
+def print_footer_notes():
+    """Print important notes and warnings at the end."""
+    print()
+    print("=" * 60)
+    print("  NOTES")
+    print("=" * 60)
+    print("  ⚠ The maximum nprocs shown is the UPPER LIMIT that avoids")
+    print("    decomposition errors (each tile ≥ 10 grid points).")
+    print()
+    print("    This does NOT mean it's the optimal choice!")
+    print()
+    print("    Using max procs may cause:")
+    print("      • Excessive inter-tile communication overhead")
+    print("      • Slower performance than fewer processors")
+    print()
+    print("    Start with a value in the middle of the valid range,")
+    print("    then benchmark to find the best performance.")
+    print("=" * 60)
+
+
 def main():
     args = parse_arguments()
 
@@ -724,6 +777,12 @@ def main():
         all_mins.append(max(1, processors_min))
         all_maxs.append(max_procs if max_procs > 0 else processors_max)
 
+    # Print PBS line for single domain (Derecho only)
+    if total_domains == 1 and max_procs > 0 and is_derecho():
+        print()
+        print("  Derecho PBS (for max procs):")
+        print(f"    {get_pbs_select_line(max_procs, args.cores)}")
+
     # Print combined summary for multiple domains
     if total_domains > 1:
         print()
@@ -742,6 +801,15 @@ def main():
             print("  nprocs range:")
             translate_procs_to_node("Minimum (largest domain)", combined_min, args.cores)
             translate_procs_to_node("Maximum (smallest domain)", combined_max, args.cores)
+            # Show PBS line only on Derecho
+            if is_derecho():
+                print()
+                print("  Derecho PBS (for max procs):")
+                print(f"    {get_pbs_select_line(combined_max, args.cores)}")
+
+    # Print footer notes unless --quiet
+    if not args.quiet:
+        print_footer_notes()
 
     print()
 
