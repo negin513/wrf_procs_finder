@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""Run wrf-procs-finder directly without pip install."""
+
+import sys
+from pathlib import Path
+
+# Add src/ to path so imports work without pip
+sys.path.insert(0, str(Path(__file__).parent / "src"))
+
+from wrf_procs_finder.cli import main
+
+if __name__ == "__main__":
+    main()

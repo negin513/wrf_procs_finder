@@ -10,30 +10,49 @@ This matches WRF's actual validation logic from `share/module_check_a_mundo.F`.
 
 ## Overview
 
-`wrf_num_procs.py` analyzes WRF domain configurations to determine:
+`wrf-procs-finder` analyzes WRF domain configurations to determine:
 - Minimum and maximum number of procs based on grid dimensions
 - Decomposition layout for parallel execution
 - Node requirements based on procs per node
 
-The tool ensures each procs handles at least 10 grid points (the WRF minimum for adequate computation space beyond halo regions).
+The tool ensures each processor handles at least 10 grid points (the WRF minimum for adequate computation space beyond halo regions).
 
 This script is adapted from a discussion on the [UCAR MMM Forum](https://forum.mmm.ucar.edu/threads/choosing-an-appropriate-number-of-processors.5082/).
+
+## Installation
+
+```bash
+git clone https://github.com/negin513/wrf_procs_finder.git
+cd wrf_procs_finder
+```
+
+**Option 1: Run directly (no install)**
+```bash
+./wrf-procs-finder --namelist examples/namelist.input
+```
+
+**Option 2: Install with pip (run from anywhere)**
+```bash
+pip install -e .
+wrf-procs-finder --namelist /path/to/namelist.input
+```
+
+**Option 3: Run as Python module**
+```bash
+python -m wrf_procs_finder --namelist examples/namelist.input
+```
 
 ## Quick Start
 
 ```bash
-# Clone and enter directory
-git clone https://github.com/negin513/wrf_procs_finder.git
-cd wrf_procs_finder
-
 # From a namelist file
-./wrf_num_procs.py --namelist examples/namelist.input
+wrf-procs-finder --namelist examples/namelist.input
 
 # From grid dimensions directly
-./wrf_num_procs.py --e_we 320 --e_sn 180
+wrf-procs-finder --e_we 320 --e_sn 180
 
 # With visual decomposition schematic
-./wrf_num_procs.py --namelist examples/namelist.input --decomp
+wrf-procs-finder --namelist examples/namelist.input --decomp
 ```
 
 ## Background
@@ -128,7 +147,7 @@ Avoid prime numbers when choosing processor counts â€”> they always result in 1Ã
 
 ## Example Output
 
-Running with the example namelist (`./wrf_num_procs.py --namelist examples/namelist.input`):
+Running with the example namelist (`wrf-procs-finder --namelist examples/namelist.input`):
 
 ```
 ------------------------------------------------------------
@@ -172,7 +191,7 @@ Running with the example namelist (`./wrf_num_procs.py --namelist examples/namel
 ### With Decomposition Schematic (--decomp)
 
 ```
-./wrf_num_procs.py --e_we 180 --e_sn 200 --decomp
+wrf-procs-finder --e_we 180 --e_sn 200 --decomp
 
 
 
