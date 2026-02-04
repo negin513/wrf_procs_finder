@@ -1,31 +1,100 @@
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 # WRF Processor Configuration Tool
 
 A tool to determine the valid processor range for WRF simulations and visualize domain decomposition.
+Matches WRF's actual validation logic from `share/module_check_a_mundo.F`.
 
 ## Overview
 
 `wrf_num_procs.py` analyzes WRF domain configurations to determine:
 - Minimum and maximum number of processors based on grid dimensions
 - Decomposition layout for parallel execution
-- Node requirements based on cores per node
+- Node requirements based on procs per node
 
 The tool ensures each processor handles at least 10 grid points (the WRF minimum for adequate computation space beyond halo regions).
 
 This script is adapted from a discussion on the [UCAR MMM Forum](https://forum.mmm.ucar.edu/threads/choosing-an-appropriate-number-of-processors.5082/).
 
+## Quick Start
+
+```bash
+# Clone and enter directory
+git clone https://github.com/negin513/wrf_procs_finder.git
+cd wrf_procs_finder
+
+# From a namelist file
+./wrf_num_procs.py --namelist examples/namelist.input
+
+# From grid dimensions directly
+./wrf_num_procs.py --e_we 320 --e_sn 180
+
+# With visual decomposition schematic
+./wrf_num_procs.py --namelist examples/namelist.input --decomp
+```
+
 ## Background
 
 ### WRF Domain Decomposition
 
-When running WRF in parallel, the domain is divided into tiles (one per processor). Each tile has:
+When running WRF in parallel, the domain is divided into tiles (one per processor):
+
+```
+┌─────────────────────────────────────────┐
+│  Domain (e_we × e_sn grid points)       │
+│  ┌─────┬─────┬─────┬─────┐              │
+│  │tile │tile │tile │tile │  ← nproc_y   │
+│  ├─────┼─────┼─────┼─────┤    tiles     │
+│  │tile │tile │tile │tile │              │
+│  └─────┴─────┴─────┴─────┘              │
+│       ↑ nproc_x tiles                   │
+└─────────────────────────────────────────┘
+```
+
+Each tile has:
 - **Halo regions**: 5 rows/columns on each side for inter-processor communication
 - **Computation space**: The interior region where actual calculations occur
 
-To avoid tiles that are entirely halo regions, each tile must have at least **10 grid points per side**.
+```
+              Single Tile Structure
+  ┌─────────────────────────────────────────┐
+  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│ ─┐
+  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│  │ 5 rows
+  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│  │ (halo)
+  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│  │
+  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│ ─┘
+  │░░░░░┌─────────────────────────────┐░░░░░│
+  │░░░░░│                             │░░░░░│
+  │░░░░░│                             │░░░░░│
+  │░░░░░│     COMPUTATION SPACE       │░░░░░│
+  │░░░░░│     (interior region)       │░░░░░│
+  │░░░░░│                             │░░░░░│
+  │░░░░░│                             │░░░░░│
+  │░░░░░└─────────────────────────────┘░░░░░│
+  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│ ─┐
+  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│  │ 5 rows
+  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│  │ (halo)
+  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│  │
+  │░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░│ ─┘
+  └─────────────────────────────────────────┘
+   ├───┤                             ├───┤
+   5 cols                            5 cols
+   (halo)                            (halo)
+
+  ░ = Halo region (inter-processor communication)
+```
+
+WRF requires each tile to have ≥ 10 grid points in both directions. This ensures adequate computation space beyond the halo regions.
+
+From WRF source (`share/module_check_a_mundo.F`):
+```fortran
+IF ( ( e_we / nproc_x .LT. 10 ) .OR. ( e_sn / nproc_y .LT. 10 ) ) THEN
+    ! FATAL ERROR
+```
 
 ### Decomposition Strategy
 
-The decomposition uses the two closest factors of the processor count to create near-square tile layouts:
+WRF decomposition uses the two closest factors of the processor count to create near-square tile layouts:
 - 16 processors → 4×4 tiles (good)
 - 11 processors → 1×11 tiles (poor - prime number)
 
@@ -33,47 +102,6 @@ The decomposition uses the two closest factors of the processor count to create 
 
 - **Maximum processors**: Based on the **smallest** domain → `(e_we/10) * (e_sn/10)`
 - **Minimum processors**: Based on the **largest** domain → `(e_we/100) * (e_sn/100)`
-
-## Installation
-
-No installation required. Just ensure Python 3 is available:
-
-```bash
-chmod +x wrf_num_procs.py
-```
-
-## Usage
-
-### Using Example Namelist
-
-```bash
-./wrf_num_procs.py --namelist examples/namelist.input
-```
-
-### Manual Input (Single Domain)
-
-```bash
-./wrf_num_procs.py --e_we 320 --e_sn 180
-```
-
-### Manual Input (Multiple Domains)
-
-```bash
-# Must match the order in namelist: domain 1, domain 2, ...
-./wrf_num_procs.py --e_we 150 220 --e_sn 130 214
-```
-
-### With Decomposition Schematic
-
-```bash
-./wrf_num_procs.py --namelist examples/namelist.input --decomp
-```
-
-### Verbose Output
-
-```bash
-./wrf_num_procs.py --namelist examples/namelist.input --verbose
-```
 
 ## Example Output
 
