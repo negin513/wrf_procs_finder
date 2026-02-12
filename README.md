@@ -26,6 +26,11 @@ git clone https://github.com/negin513/wrf_procs_finder.git
 cd wrf_procs_finder
 ```
 
+```bash
+pip install -e .
+wrf-procs-finder --namelist examples/namelist.input
+```
+
 **Option 1: Run directly (no install)**
 ```bash
 ./wrf-procs-finder --namelist examples/namelist.input
