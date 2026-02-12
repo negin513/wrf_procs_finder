@@ -26,26 +26,6 @@ git clone https://github.com/negin513/wrf_procs_finder.git
 cd wrf_procs_finder
 ```
 
-```bash
-pip install -e .
-wrf-procs-finder --namelist examples/namelist.input
-```
-
-**Option 1: Run directly (no install)**
-```bash
-./wrf-procs-finder --namelist examples/namelist.input
-```
-
-**Option 2: Install with pip (run from anywhere)**
-```bash
-pip install -e .
-wrf-procs-finder --namelist /path/to/namelist.input
-```
-
-**Option 3: Run as Python module**
-```bash
-python -m wrf_procs_finder --namelist examples/namelist.input
-```
 
 ## Quick Start
 
@@ -260,10 +240,6 @@ wrf-procs-finder --e_we 180 --e_sn 200 --decomp
 
     This does NOT mean it's the optimal choice!
 
-    Using max procs may cause:
-      • Excessive inter-tile communication overhead
-      • Slower performance than fewer processors
-
     Start with a value in the middle of the valid range,
     then benchmark to find the best performance.
 ============================================================
@@ -305,6 +281,8 @@ When running on NCAR's Derecho supercomputer, the tool automatically generates P
 > 2. Prefer **near-square decompositions** (e.g., `64 = 8×8`) over skinny layouts (e.g., `64 = 4×16`)  
 > 3. Benchmark multiple configurations to find the performance sweet spot for your specific case
 
+## Acknowledgement
+This tool is dedicated to ([**Dave Gill**](https://github.com/davegill)), WRF original SE, and ([**Davide Del Vento**](https://github.com/ddvento)). When I was a grad student struggling to understand WRF's internals and domain decomposition, they took the time to explain things and patiently answer my many questions. If this tool makes WRF a bit less mysterious for someone else, then it's my small way of paying it forward.
 
 ## References
 
