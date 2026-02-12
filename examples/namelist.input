@@ -29,7 +29,7 @@
  time_step_fract_den                 = 1,
  max_dom                             = 2,
  e_we                                = 150,    220,
- e_sn                                = 130,    214,
+ e_sn                                = 180,    214,
  e_vert                              = 45,     45,
  dzstretch_s                         = 1.1
  p_top_requested                     = 5000,
