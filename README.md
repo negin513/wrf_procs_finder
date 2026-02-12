@@ -282,7 +282,7 @@ When running on NCAR's Derecho supercomputer, the tool automatically generates P
 > 3. Benchmark multiple configurations to find the performance sweet spot for your specific case
 
 ## Acknowledgement
-This tool is dedicated to ([**Dave Gill**](https://github.com/davegill)), WRF original SE, and ([**Davide Del Vento**](https://github.com/ddvento)). When I was a grad student struggling to understand WRF's internals and domain decomposition, they took the time to explain things and patiently answer my many questions. If this tool makes WRF a bit less mysterious for someone else, then it's my small way of paying it forward.
+This tool is dedicated to ([**Dave Gill**](https://github.com/davegill)), WRF original SE, and ([**Davide Del Vento**](https://github.com/ddvento)). When I was a grad student struggling to understand WRF's internals and domain decomposition, they took the time to explain things and patiently answer my many questions. If this tool makes WRF easier to use for someone else, then it's my small way of paying it forward.
 
 ## References
 
